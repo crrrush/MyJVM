@@ -20,7 +20,9 @@
     const char PATH_SEPARATOR = ':';
 #endif
 
-// Entry类是所有类路径项的基类
+class EntryFactory;  // 前向声明
+
+// Entry基类
 class Entry {
 public:
     virtual ~Entry() = default;
@@ -29,21 +31,29 @@ public:
     // 参数: className - 类名
     // 返回值: tuple<数据内容, Entry指针, 是否成功>
     virtual std::tuple<std::string, std::shared_ptr<Entry>, bool> 
-    readClass(const std::string& className) = 0;
+    read_class(const std::string& className) = 0;
+    virtual std::string to_string() const = 0;
+
+protected:
+    // 将构造函数设为protected，这样只有派生类和友元类可以访问
+    Entry() = default;
     
-    // 返回Entry的字符串表示
-    virtual std::string toString() const = 0;
+    // 声明工厂类为友元
+    friend class EntryFactory;
 };
 
 using EntryPtr = std::shared_ptr<Entry>;
-// 根据路径创建相应的Entry实例
-EntryPtr createEntry(const std::string& path);
 
-
-// 目录形式的类路径项
-class DirEntry : public Entry, public std::enable_shared_from_this<DirEntry> {
+// 工厂静态方法声明
+class EntryFactory {
 public:
-    // 构造函数，将路径转换为绝对路径
+    static EntryPtr create(const std::string& path);
+};
+    
+
+class DirEntry : public Entry, public std::enable_shared_from_this<DirEntry> {
+private:
+    // 将构造函数设为私有
     explicit DirEntry(const std::string& path) {
         char realPath[PATH_MAX];
         if (realpath(path.c_str(), realPath) != nullptr) {
@@ -53,10 +63,15 @@ public:
             throw std::runtime_error("Failed to resolve path");
         }
     }
+    
+    std::string _abs_dir;
+    
+    // 声明工厂类为友元
+    friend class EntryFactory;
 
-    // 从目录中读取class文件
+public:
     std::tuple<std::string, EntryPtr, bool> 
-    readClass(const std::string& className) override {
+    read_class(const std::string& className) override {
         std::string fileName = _abs_dir + "/" + className;
         std::string data;
         
@@ -66,20 +81,12 @@ public:
         return std::make_tuple("", nullptr, false);
     }
 
-    // 返回目录的绝对路径
-    std::string toString() const override {
-        return _abs_dir;
-    }
-
-private:
-    std::string _abs_dir;  // 绝对路径
+    std::string to_string() const override { return _abs_dir; }
 };
 
-
-// ZIP/JAR文件形式的类路径项
 class ZipEntry : public Entry, public std::enable_shared_from_this<ZipEntry> {
-public:
-    // 构造函数，将ZIP文件路径转换为绝对路径
+private:
+    // 将构造函数设为私有
     explicit ZipEntry(const std::string& path) {
         char realPath[PATH_MAX];
         if (realpath(path.c_str(), realPath) != nullptr) {
@@ -89,10 +96,15 @@ public:
             throw std::runtime_error("Failed to resolve path");
         }
     }
+    
+    std::string _abs_path;
+    
+    // 声明工厂类为友元
+    friend class EntryFactory;
 
-    // 从ZIP文件中读取class文件
+public:
     std::tuple<std::string, EntryPtr, bool> 
-    readClass(const std::string& className) override {
+    read_class(const std::string& className) override {
         int err = 0;
         zip* archive = zip_open(_abs_path.c_str(), ZIP_RDONLY, &err);
         if (!archive) {
@@ -102,7 +114,6 @@ public:
             return std::make_tuple("", nullptr, false);
         }
 
-        // 使用 RAII 确保 zip 文件被正确关闭
         std::unique_ptr<zip, decltype(&zip_close)> zip_guard(archive, zip_close);
 
         struct zip_stat st;
@@ -118,7 +129,6 @@ public:
                 return std::make_tuple("", nullptr, false);
             }
 
-            // 使用 RAII 确保 zip_file 被正确关闭
             std::unique_ptr<zip_file, decltype(&zip_fclose)> 
                 file_guard(file, zip_fclose);
 
@@ -134,20 +144,12 @@ public:
         return std::make_tuple("", nullptr, false);
     }
 
-    // 返回ZIP文件的绝对路径
-    std::string toString() const override {
-        return _abs_path;
-    }
-
-private:
-    std::string _abs_path;  // ZIP文件的绝对路径
+    std::string to_string() const override { return _abs_path; }
 };
 
-
-// 组合形式的类路径项，处理多个路径
 class CompositeEntry : public Entry {
-public:
-    // 构造函数，解析路径列表并创建对应的Entry
+private:
+    // 将构造函数设为私有
     explicit CompositeEntry(const std::string& pathList) {
         std::string::size_type start = 0;
         std::string::size_type end;
@@ -155,7 +157,7 @@ public:
         while ((end = pathList.find(PATH_SEPARATOR, start)) != std::string::npos) {
             if (end > start) {
                 std::string path = pathList.substr(start, end - start);
-                auto entry = createEntry(path);
+                auto entry = EntryFactory::create(path);
                 if (entry) {
                     _entries.push_back(entry);
                 }
@@ -164,18 +166,23 @@ public:
         }
         
         if (start < pathList.length()) {
-            auto entry = createEntry(pathList.substr(start));
+            auto entry = EntryFactory::create(pathList.substr(start));
             if (entry) {
                 _entries.push_back(entry);
             }
         }
     }
+    
+    std::vector<EntryPtr> _entries;
+    
+    // 声明工厂类为友元
+    friend class EntryFactory;
 
-    // 依次从所有Entry中查找并读取class文件
+public:
     std::tuple<std::string, EntryPtr, bool> 
-    readClass(const std::string& className) override {
+    read_class(const std::string& className) override {
         for (const auto& entry : _entries) {
-            auto [data, from, success] = entry->readClass(className);
+            auto [data, from, success] = entry->read_class(className);
             if (success) {
                 return std::make_tuple(data, from, true);
             }
@@ -183,39 +190,36 @@ public:
         return std::make_tuple("", nullptr, false);
     }
 
-    // 返回所有Entry的字符串表示，以路径分隔符连接
-    std::string toString() const override {
+    std::string to_string() const override {
         std::string result;
         for (const auto& entry : _entries) {
             if (!result.empty()) {
                 result += PATH_SEPARATOR;
             }
-            result += entry->toString();
+            result += entry->to_string();
         }
         return result;
     }
-
-private:
-    std::vector<EntryPtr> _entries;  // Entry列表
 };
 
-// 通配符形式的类路径项，处理包含通配符(*)的路径
 class WildcardEntry : public Entry {
-public:
-    // 构造函数，扫描基础目录下的所有JAR文件
+private:
+    // 将构造函数设为私有
     explicit WildcardEntry(const std::string& path) {
-        std::string baseDir = path.substr(0, path.length() - 1); // remove *
-        
-		// 这里需要根据不同的操作系统做出适配
-        // 使用文件系统遍历目录并查找JAR文件
+        std::string baseDir = path.substr(0, path.length() - 1);
         walkDirectory(baseDir);
     }
+    
+    std::vector<EntryPtr> _entries;
+    
+    // 声明工厂类为友元
+    friend class EntryFactory;
 
-    // 依次从所有JAR文件中查找并读取class文件
+public:
     std::tuple<std::string, EntryPtr, bool> 
-    readClass(const std::string& className) override {
+    read_class(const std::string& className) override {
         for (const auto& entry : _entries) {
-            auto [data, from, success] = entry->readClass(className);
+            auto [data, from, success] = entry->read_class(className);
             if (success) {
                 return std::make_tuple(data, from, true);
             }
@@ -223,21 +227,21 @@ public:
         return std::make_tuple("", nullptr, false);
     }
 
-    // 返回所有JAR文件的路径，以路径分隔符连接
-    std::string toString() const override {
+    std::string to_string() const override {
         std::string result;
         for (const auto& entry : _entries) {
             if (!result.empty()) {
                 result += PATH_SEPARATOR;
             }
-            result += entry->toString();
+            result += entry->to_string();
         }
         return result;
     }
 
 private:
-    // 遍历目录，查找JAR文件并创建对应的ZipEntry
     void walkDirectory(const std::string& baseDir) {
+        // 这个函数的实现依赖于不同系统文件系统接口
+
         DIR* dir = opendir(baseDir.c_str());
         if (!dir) {
             LOG(ERROR, "Failed to open directory: %s", baseDir.c_str());
@@ -252,53 +256,42 @@ private:
             std::string path = baseDir + "/" + name;
             if (name.length() > 4) {
                 std::string ext = name.substr(name.length() - 4);
-                if (ext == ".jar" || ext == ".JAR") {
-                    auto jarEntry = std::make_shared<ZipEntry>(path);
+                if (ext == ".jar" || ext == ".JAR") 
+                {
+                    // auto jarEntry = std::make_shared<ZipEntry>(path); // 交给工厂类创建
+                    auto jarEntry = EntryFactory::create(path);
                     _entries.push_back(jarEntry);
                 }
             }
         }
         closedir(dir);
     }
-
-    std::vector<EntryPtr> _entries;  // ZipEntry列表
 };
 
-// // EmptyEntry class for Java 9+ where ext classpath is not used
-// class EmptyEntry : public Entry {
-// public:
-//     std::tuple<std::string, std::shared_ptr<Entry>, bool> readClass(const std::string&) override {
-//         return std::make_tuple("", nullptr, false);
-//     }
 
-//     std::string toString() const override {
-//         return "";
-//     }
-// };
-
-
-// 根据路径创建相应类型的Entry
-// 规则：
-// 1. 包含路径分隔符 -> CompositeEntry
-// 2. 以*结尾 -> WildcardEntry
-// 3. 以.jar/.JAR/.zip/.ZIP结尾 -> ZipEntry
-// 4. 其他 -> DirEntry
-EntryPtr createEntry(const std::string& path) {
+EntryPtr EntryFactory::create(const std::string& path) {
     if (path.find(PATH_SEPARATOR) != std::string::npos) {
-        return std::make_shared<CompositeEntry>(path);
+        // return std::static_pointer_cast<Entry>(std::make_shared<CompositeEntry>(path));
+        return EntryPtr(new CompositeEntry(path));
     }
 
     if (path.back() == '*') {
-        return std::make_shared<WildcardEntry>(path);
+        // return std::static_pointer_cast<Entry>(std::make_shared<WildcardEntry>(path));
+        return EntryPtr(new WildcardEntry(path));
     }
 
     if (path.length() > 4) {
         std::string ext = path.substr(path.length() - 4);
         if (ext == ".jar" || ext == ".JAR" ||
-            ext == ".zip" || ext == ".ZIP") {
-            return std::make_shared<ZipEntry>(path);
+            ext == ".zip" || ext == ".ZIP") 
+        {
+            // return std::static_pointer_cast<Entry>(std::make_shared<ZipEntry>(path));
+            // return EntryPtr(new ZipEntry(path));
+            return std::static_pointer_cast<Entry>(std::shared_ptr<ZipEntry>(new ZipEntry(path)));
         }
     }
 
-    return std::make_shared<DirEntry>(path);
+    // return std::static_pointer_cast<Entry>(std::make_shared<DirEntry>(path));
+    return EntryPtr(new DirEntry(path));
 }
+

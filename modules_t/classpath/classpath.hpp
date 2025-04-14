@@ -11,19 +11,19 @@
 #include "../util.hpp"
 #include "entry.hpp"
 
-class Classpath {
+class ClassPath {
 public:
     // 使用智能指针管理Entry对象
-    using EntryPtr = std::shared_ptr<Entry>;
+    // using EntryPtr = std::shared_ptr<Entry>;
 
     // 构造函数采用委托构造的方式
-    explicit Classpath(const std::string& jreOption = "", 
+    explicit ClassPath(const std::string& jreOption = "", 
                       const std::string& cpOption = "") {
         parse(jreOption, cpOption);
     }
 
     // 读取类文件，返回tuple包含多个返回值
-    std::tuple<std::string, EntryPtr, bool> readClass(const std::string& className) {
+    std::tuple<std::string, EntryPtr, bool> read_class(const std::string& className) {
         std::string fullName = className + ".class";
         LOG(DEBUG, "Trying to read class: %s", fullName.c_str());
 
@@ -35,14 +35,14 @@ public:
             LOG(ERROR, "Boot classpath is not set!");
             throw std::runtime_error("Boot classpath is not set");
         }
-        std::tie(data, entry, success) = _boot_classpath->readClass(fullName);
+        std::tie(data, entry, success) = _boot_classpath->read_class(fullName);
         if (success) {
             LOG(INFO, "Class found in boot classpath");
             return std::make_tuple(data, entry, true);
         }
 
         if(_ext_classpath.get() != nullptr) {
-            std::tie(data, entry, success) = _ext_classpath->readClass(fullName);
+            std::tie(data, entry, success) = _ext_classpath->read_class(fullName);
             if (success) {
                 LOG(INFO, "Class found in ext classpath");
                 return std::make_tuple(data, entry, true);
@@ -53,7 +53,7 @@ public:
             LOG(ERROR, "User classpath is not set!");
             throw std::runtime_error("User classpath is not set");
         }
-        auto result = _user_classpath->readClass(fullName);
+        auto result = _user_classpath->read_class(fullName);
         if (std::get<2>(result)) {
             LOG(INFO, "Class found in user classpath");
         } else {
@@ -62,23 +62,23 @@ public:
         return result;
     }
 
-    std::string toString() const {
-        return _user_classpath->toString();
+    std::string to_string() const {
+        return _user_classpath->to_string();
     }
 
 private:
     // 创建Classpath实例
     void parse(const std::string& jreOption, 
         const std::string& cpOption) {
-        parseBootAnd_ext_classpath(jreOption);
+        parse_boot_and_ext_classpath(jreOption);
         parse_user_classpath(cpOption);
     }
 
-    void parseBootAnd_ext_classpath(const std::string& jreOption) {
-        std::string jdkDir = getJreDir(jreOption);
+    void parse_boot_and_ext_classpath(const std::string& jreOption) {
+        std::string jdkDir = get_jre_dir(jreOption);
         LOG(INFO, "Using JDK directory: %s", jdkDir.c_str());
 
-        _boot_classpath = createEntry(join_path(jdkDir, "classes"));
+        _boot_classpath = EntryFactory::create(join_path(jdkDir, "classes"));
         // _ext_classpath默认为空，除非有指定，但是现在暂时不支持指定扩展类路径选项
 
 
@@ -100,14 +100,14 @@ private:
     void parse_user_classpath(const std::string& cpOption) {
         std::string path = cpOption.empty() ? "." : cpOption;
         LOG(INFO, "Using user classpath: %s", path.c_str());
-        _user_classpath = createEntry(path);
+        _user_classpath = EntryFactory::create(path);
         if (!_user_classpath) {
             LOG(ERROR, "Failed to create user classpath entry: %s", path.c_str());
             throw std::runtime_error("Failed to create user classpath entry");
         }
     }
 
-    std::string getJreDir(const std::string& jreOption) {
+    std::string get_jre_dir(const std::string& jreOption) {
         // First try to use provided jreOption
         if (!jreOption.empty() && is_exists(jreOption)) {
             return jreOption;
@@ -119,8 +119,8 @@ private:
         }
 
         // 自己使用jmod命令jmod extract --dir=./jvm-core-libs /pathtojmod/java.sql.jmod从jmod文件中解压出来的启动类文件
-        if(is_exists("/home/crush/workspace/MyJvm/jvm-core-libs")) {
-            return "/home/crush/workspace/MyJvm/jvm-core-libs";
+        if(is_exists("/home/crush/jvm-core-libs")) {
+            return "/home/crush/jvm-core-libs";
         }
 
         // For Java >= 11, just use JAVA_HOME or default installation path
