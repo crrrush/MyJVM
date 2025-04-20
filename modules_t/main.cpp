@@ -1,9 +1,62 @@
 ﻿
+#include <memory>
 
 #include "cmd.hpp"
+#include "classpath/class_path.hpp"
+#include "classfile/class_file.hpp"
 
-#include "classpath/entry.hpp"
-#include "classpath/classpath.hpp"
+using namespace jvm;
+using namespace jvm::classpath;
+using namespace jvm::classfile;
+
+std::shared_ptr<ClassFile> loadClass(const std::string& class_name, ClassPath& cp)
+{
+    auto [data, entry, success] = cp.read_class(class_name);
+    if(!success)
+    {
+        LOG(ERROR, "Failed to read class data for %s", class_name.c_str());
+        return nullptr;
+    }
+
+    if(data.empty())
+    {
+        LOG(ERROR, "Class data is empty for %s", class_name.c_str());
+        return nullptr;
+    }
+
+    std::vector<uint8_t> class_data(data.begin(), data.end());
+    auto [p_class_file, success_parse] = ClassFile::parse(class_data);
+    if(!success_parse)
+    {
+        LOG(ERROR, "Failed to parse class file for %s", class_name.c_str());
+        return nullptr;
+    }
+
+    return p_class_file;
+}
+
+void printClassInfo(std::shared_ptr<ClassFile> p_cf)
+{
+    // LOG(INFO, "--------------------------------");
+    // LOG(INFO, "version: %s", p_cf->class_name().c_str());
+    std::cout << "--------------------------------" << std::endl;
+    std::cout << "version: " << p_cf->major_version() << "." << p_cf->minor_version() << std::endl;
+    std::cout << "constants count: " << (p_cf->constant_pool()).size() << std::endl;
+    std::cout << "access flags: " << p_cf->access_flags() << std::endl;
+    std::cout << "this class: " << p_cf->class_name() << std::endl;
+    std::cout << "super class: " << p_cf->super_class_name() << std::endl;
+    std::cout << "interfaces: " << p_cf->interface_names().size() << std::endl;
+    std::cout << "fields: " << p_cf->fields().size() << std::endl;
+    for (const auto& field : p_cf->fields()) {
+        std::cout << "  " << field->name() << ": " << field->descriptor() << std::endl;
+    }
+    std::cout << "methods: " << p_cf->methods().size() << std::endl;
+    for (const auto& method : p_cf->methods()) {
+        std::cout << "  " << method->name() << ": " << method->descriptor() << std::endl;
+    }
+    std::cout << "--------------------------------" << std::endl;
+}
+
 
 void startJVM(const Cmd& cmd)
 {
@@ -13,11 +66,11 @@ void startJVM(const Cmd& cmd)
     std::string java_class = cmd.get_java_class();
     const std::vector<std::string>& args = cmd.get_args();
 
-    Classpath cp(jre_path, classpath);
+    ClassPath cp(jre_path, classpath);
 
     // Here you would typically initialize the JVM using JNI or similar APIs
     // For demonstration, we will just print the parameters
-    std::cout << "Starting JVM with classpath: " << cp.toString() << std::endl;
+    std::cout << "Starting JVM with classpath: " << cp.to_string() << std::endl;
     std::cout << "Using JRE path: " << jre_path << std::endl;
     std::cout << "Using Class path: " << classpath << std::endl;
     std::cout << "Main class: " << java_class << std::endl;
@@ -34,12 +87,19 @@ void startJVM(const Cmd& cmd)
             c = '/';
         }
     }
-    auto [data, entry, success] = cp.readClass(java_class);
-    if (success) {
-        std::cout << "Class data: [" << data << "]" << std::endl;
-    } else {
-        std::cerr << "Failed to read class data." << std::endl;
-    }    
+    // auto [data, entry, success] = cp.read_class(java_class);
+    // if (success) {
+    //     std::cout << "Class data: [" << data << "]" << std::endl;
+    // } else {
+    //     std::cerr << "Failed to read class data." << std::endl;
+    // }
+
+    auto p_cf = loadClass(java_class, cp);
+    if(!p_cf) {
+        std::cerr << "Failed to load class: " << java_class << std::endl;
+        return;
+    }
+    printClassInfo(p_cf);
 }
 
 int main(int argc, char* argv[])

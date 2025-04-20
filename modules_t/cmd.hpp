@@ -195,7 +195,9 @@ private:
     static Cmd* _pcmd;
 
     // const std::string DEFAULT_JRE_PATH = "/usr/lib/jvm/java-17-openjdk-amd64";
-    const std::string DEFAULT_JRE_PATH = "/home/crush/workspace/MyJvm/jvm-core-libs";
+    // const std::string DEFAULT_JRE_PATH = "/home/crush/jvm-core-libs";
+    const std::string DEFAULT_JRE_PATH = "/home/crush/jvm_classfile";
+    
 
     bool _parse_sucess;
     bool _help_flag;
@@ -209,7 +211,7 @@ private:
     std::string _Xjre_path; // JRE path
     std::string _class_path; // Classpath
     
-    std::string _java_class;
+    std::string _java_class; // Main class name (e.g., HelloWorld.class)
     std::vector<std::string> _args;
 
     std::string _error_msg;

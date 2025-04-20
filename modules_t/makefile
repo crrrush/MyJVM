@@ -1,12 +1,12 @@
 # 编译器设置
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -I./ch02
+CXXFLAGS = -std=c++17 -Wall -Wextra -I./modules_t
 
 # 目标文件
 TARGET = jvm
 
 # 源文件
-SRCS = main.cpp
+SRCS = main.cpp classfile/constant_pool.cpp classfile/member_info.cpp
 
 # 目标文件
 OBJS = $(SRCS:.cpp=.o)

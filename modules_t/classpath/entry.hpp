@@ -13,6 +13,10 @@
 #include "../log.hpp"
 #include "../util.hpp"
 
+
+namespace jvm{
+namespace classpath {
+
 // 针对不同平台的路径分隔符
 #ifdef _WIN32
     const char PATH_SEPARATOR = ';';
@@ -295,3 +299,5 @@ EntryPtr EntryFactory::create(const std::string& path) {
     return EntryPtr(new DirEntry(path));
 }
 
+} // namespace classpath
+} // namespace jvm
