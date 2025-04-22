@@ -1,10 +1,19 @@
 #pragma once
 
 #include <memory>
+#include <stdexcept>
+#include "stack.hpp" // 引入Stack类
+
+namespace jvm {
+namespace rtda {
 
 class Thread{
 public:
     Thread(const size_t& st_size = 1024) : _pc(0), _p_stack(std::make_shared<Stack>(st_size)) {}
+    Thread(const Thread&) = delete; // 禁止拷贝构造
+    Thread& operator=(const Thread&) = delete; // 禁止赋值操作
+    Thread(Thread&&) = default; // 允许移动构造
+    Thread& operator=(Thread&&) = default; // 允许移动赋值
     ~Thread() = default;
 
     int getPC() const { return _pc; }
@@ -23,3 +32,6 @@ private:
     int _pc;
     std::shared_ptr<Stack> _p_stack;
 };
+
+} // namespace rtda
+} // namespace jvm
